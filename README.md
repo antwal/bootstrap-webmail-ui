@@ -8,6 +8,13 @@
 
 ---
 
+## Live Preview / Quick Test
+| Method | URL | Notes |
+|--------|-----|-------|
+| GitHub Pages | https://antwal.github.io/bootstrap-webmail-ui/webmail.html | Static build from main branch |
+| GitHack (prod CDN) | https://rawcdn.githack.com/antwal/bootstrap-webmail-ui/main/webmail.html | CDN with aggressive caching |
+| GitHack (fast dev) | https://raw.githack.com/antwal/bootstrap-webmail-ui/main/webmail.html | Near real-time updates |
+
 ## Overview
 WebMail UI is a self‑contained single-file (HTML + CSS + JS + `<template>` blocks) responsive webmail interface that simulates a multi‑account mailbox. It implements lazy pagination, internationalization (i18n), attachment rendering via semantic templates, theme switching, accessibility enhancements, a DOM translation scanner, and a resilient fetch strategy (`mockFetch`) that attempts real network calls before falling back to locally defined mock data.
 
