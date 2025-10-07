@@ -1,0 +1,1898 @@
+<!DOCTYPE html>
+<html lang="it" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title data-translate-key="page_title">WebMail UI</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden; /* Prevents body scrolling */
+        }
+
+        .main-content {
+            flex-grow: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        .sidebar, .email-list-panel, .email-content-panel {
+            height: calc(100vh - 56px); /* 56px is the standard navbar height */
+            overflow-y: auto;
+        }
+        
+        .email-list-panel {
+            border-right: 1px solid var(--bs-border-color);
+        }
+
+        .list-group-item {
+            cursor: pointer;
+        }
+
+        .list-group-item.active {
+            background-color: var(--bs-primary);
+            border-color: var(--bs-primary);
+        }
+        
+        #loading-indicator {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 1rem;
+        }
+
+        /* Hides the email panel on small screens */
+        @media (max-width: 991.98px) {
+            .email-content-panel {
+                display: none;
+            }
+            .email-list-panel.full-width .email-content-panel {
+                display: block;
+                width: 100%;
+            }
+        }
+         /* Style for the selected email on mobile */
+        .email-list-panel .list-group-item.selected {
+            background-color: #e9ecef;
+        }
+        html[data-bs-theme="dark"] .email-list-panel .list-group-item.selected {
+            background-color: #343a40;
+        }
+        /* Styles for the Loading Overlay */
+        #loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            /* Semi-transparent background and blur for the "blocking" effect */
+            background-color: rgba(255, 255, 255, 0.7); 
+            backdrop-filter: blur(4px); 
+            z-index: 1050; /* Must be above the navbar and everything else */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        [data-bs-theme="dark"] #loading-overlay {
+            background-color: rgba(0, 0, 0, 0.7); /* Adjustment for dark theme */
+        }
+
+        /* NEW STYLES FOR ATTACHMENTS */
+        .attachmentsContent {
+            height: 20%;
+            overflow: auto;
+            padding-top: 0rem !important;
+        }
+        @media (max-width: 991.98px) {
+            .attachmentsContent {
+                height: 40% !important;
+            }
+        }
+        .attachment-container {
+            display: flex;
+            flex-wrap: wrap; /* Allows elements to wrap */
+            gap: 1rem; /* Fixed spacing between attachments */
+        }
+        
+        .attachment-card {
+            display: flex;
+            align-items: center;
+            padding: 0.5rem;
+            border: 1px solid var(--bs-border-color);
+            border-radius: 0.5rem;
+            max-width: 100%; /* Handles maximum width for very wide elements */
+            flex: 0 0 auto; /* Allows elements to keep their size and wrap */
+        }
+        
+        .attachment-icon {
+            font-size: 1.5rem;
+            margin-right: 0.75rem;
+        }
+        
+        .attachment-img-preview {
+            width: 40px;
+            height: 40px;
+            object-fit: cover;
+            border-radius: 4px;
+            margin-right: 0.75rem;
+        }
+
+        .attachment-info {
+            flex-grow: 1;
+            min-width: 0; /* Ensures content can be truncated */
+            margin-right: 0.75rem;
+        }
+
+        /* Text truncation via CSS */
+        .attachment-filename {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 200px; /* Maximum file name width before truncation */
+            display: block;
+            font-weight: bold;
+        }
+
+        .attachment-size {
+            font-size: 0.8em;
+            color: var(--bs-secondary-color);
+        }
+
+        .mobile-back-header { display: none; }
+        @media (max-width: 991.98px) {
+            .mobile-back-header { display: block; }
+        }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg bg-body-tertiary border-bottom flex-shrink-0">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="#">
+            <i class="bi bi-envelope-paper-heart-fill text-primary"></i>
+            <span data-translate-key="navbar_brand">WebMail UI</span>
+        </a>
+
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavbar" aria-controls="mainNavbar" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="mainNavbar">
+            <form class="d-flex mx-auto" role="search">
+                <input id="search-input" class="form-control me-2" type="search" data-translate-key="search_placeholder" placeholder="Search mail..." aria-label="Search">
+                <button class="btn btn-outline-primary" type="submit" data-translate-key="search_button" aria-label="Search"></button>
+            </form>
+            
+            <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-gear-fill"></i> <span data-translate-key="settings_button" aria-label="Settings"></span>
+                    </a>
+                    <ul class="dropdown-menu dropdown-menu-end">
+                        <li><h6 class="dropdown-header" data-translate-key="theme_header" aria-label="Theme"></h6></li>
+                        <li><a class="dropdown-item" href="#" id="theme-light"><i class="bi bi-sun-fill me-2"></i><span data-translate-key="theme_light" aria-label="Light"></span></a></li>
+                        <li><a class="dropdown-item" href="#" id="theme-dark"><i class="bi bi-moon-stars-fill me-2"></i><span data-translate-key="theme_dark" aria-label="Dark"></span></a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><h6 class="dropdown-header" data-translate-key="language_header" aria-label="Language"></h6></li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+    </div>
+</nav>
+
+<div class="container-fluid main-content">
+    <div class="row flex-grow-1">
+
+        <div class="col-lg-2 col-md-3 sidebar bg-body-tertiary border-end p-3 d-none d-md-block">
+            <div class="dropdown mb-3">
+                <button class="btn btn-secondary dropdown-toggle w-100" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <span id="current-account-label"></span>
+                </button>
+                <ul class="dropdown-menu w-100" id="account-list">
+                    <!-- Accounts will be inserted here -->
+                </ul>
+            </div>
+
+            <nav class="nav nav-pills flex-column" id="folder-list">
+                <!-- Folders will be inserted here -->
+            </nav>
+        </div>
+
+        <div class="col-lg-4 col-md-9 email-list-panel p-0">
+            <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+                <h5 class="mb-0" id="current-folder-title" aria-label="Inbox"></h5>
+                <span class="badge bg-primary-subtle text-primary-emphasis rounded-pill" id="email-count-badge">0</span>
+            </div>
+            <div class="list-group list-group-flush" id="email-list-container">
+                <!-- Email list will be inserted here -->
+            </div>
+        </div>
+
+        <div class="col-lg-6 col-md-9 email-content-panel p-0">
+            <div id="email-view" class="d-flex flex-column h-100">
+                <!-- Email content or placeholder will be inserted here -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- LANGUAGE DROPDOWN ITEM TEMPLATE -->
+<template id="language-dropdown-item">
+    <li>
+        <a class="dropdown-item" href="#" data-language-code="">
+            <img class="me-2" data-flag-img> 
+            <span data-language-name></span>
+        </a>
+    </li>
+</template>
+
+<!-- LOADING INDICATOR TEMPLATE -->
+<template id="email-loading">
+    <div id="loading-indicator">
+        <div class="spinner-border spinner-border-sm" role="status">
+            <span class="visually-hidden" data-translate-key="loading"></span>
+        </div>
+        <span class="ms-2" data-translate-key="loading"></span>
+    </div>
+</template>
+
+<!-- NO EMAIL FOUND TEMPLATE -->
+<template id="email-not-found">
+    <p class="p-3 text-secondary" data-translate-key="no_emails" aria-label="No email here."></p>
+</template>
+
+<!-- PLACEHOLDER FOR NO EMAIL SELECTED -->
+<template id="email-empty">
+    <div id="placeholder-view" class="d-flex flex-column align-items-center justify-content-center h-100 text-secondary">
+        <i class="bi bi-envelope-open" style="font-size: 5rem;"></i>
+        <p class="mt-3" data-translate-key="select_email_placeholder" aria-label="Select an email to read it."></p>
+    </div>
+</template>
+
+<!-- EMAIL CONTENT TEMPLATE -->
+<template id="email-content">
+    <div class="p-3 border-bottom">
+        <h4 class="mb-1" data-email-subject></h4>
+        <div class="text-muted" data-email-labels>
+            <!-- Sender/Recipient labels will be inserted here -->
+        </div>
+    </div>
+    <div class="p-3 flex-grow-1" style="overflow-y: auto;" data-email-body>
+        <!-- Email body will be inserted here -->
+    </div>
+    <div class="p-3 bg-body-tertiary border-top attachmentsContent" data-email-footer>
+        <!-- Attachments section will be inserted here -->
+    </div>
+</template>
+
+<!-- EMAIL LABELS (FROM/TO) TEMPLATE -->
+<template id="email-content-labels">
+    <strong><span data-translate-key="from_label" aria-label="From"></span>: </strong><span data-field="from"></span><br>
+    <strong><span data-translate-key="to_label" aria-label="To"></span>: </strong><span data-field="to"></span>
+</template>
+
+<!-- MOBILE BACK BUTTON TEMPLATE (visible only on <992px) -->
+<template id="email-mobile-back">
+    <div class="p-2 border-bottom d-lg-none">
+        <button class="btn btn-light back-button" onclick="showEmailList()">
+            <i class="bi bi-arrow-left"></i> <span data-translate-key="back_button" aria-label="Back"></span>
+        </button>
+    </div>
+</template>
+
+<!-- FOLDER ITEM TEMPLATE -->
+<template id="folder-item">
+    <a href="#" class="nav-link d-flex justify-content-between align-items-center" data-folder-key=""></a>
+</template>
+
+<!-- FOLDER ITEM CONTENT TEMPLATE -->
+<template id="folder-item-content">
+    <span>
+        <i class="bi me-2"></i>
+        <span name="folderKey" data-translate-key="" aria-label=""></span>
+    </span>
+</template>
+
+<!-- FOLDER ITEM BADGE TEMPLATE -->
+<template id="folder-item-badge">
+    <span class="badge bg-danger rounded-pill"></span>
+</template>
+
+<!-- ACCOUNT ITEM TEMPLATE -->
+<template id="account-item">
+    <li>
+        <a class="dropdown-item" href="#"></a>
+    </li>
+</template>
+
+<!-- EMAIL LIST ITEM TEMPLATE -->
+<template id="email-list-item">
+    <a href="#" class="list-group-item list-group-item-action" data-email-id=""></a>
+</template>
+
+<!-- EMAIL LIST CONTENT TEMPLATE -->
+<template id="email-list-content">
+    <div class="d-flex w-100 justify-content-between">
+        <h6 class="mb-1" data-filed="activeFolder"></h6>
+        <!-- TODO: Add email date handling -->
+        <small class="text-muted">01-02-2025</small>
+    </div>
+    <p class="mb-1" data-field="subject"></p>
+    <small class="text-muted" data-field="snippet"></small>
+</template>
+
+<!-- ATTACHMENT CARD TEMPLATE -->
+<template id="attachment-item">
+    <div class="attachment-card">
+        <!-- mediaHTML can be an icon or image preview -->
+        <div class="attachment-info">
+            <span class="attachment-filename" title=""></span>
+            <small class="attachment-size"></small>
+        </div>
+        <a href="" download="" class="text-decoration-none text-primary ms-auto" title="Download">
+            <i class="bi bi-download"></i>
+        </a>
+    </div>
+</template>
+
+<!-- ATTACHMENT ICON TEMPLATE -->
+<template id="attachment-icon">
+    <i class="bi attachment-icon"></i>
+</template>
+
+<!-- ATTACHMENT IMAGE PREVIEW TEMPLATE -->
+<template id="attachment-img">
+    <img src="" alt="Preview" class="attachment-img-preview" />
+</template>
+
+<!-- ATTACHMENT SECTION TEMPLATE -->
+<template id="attachment-content">
+    <div class="mt-3">
+        <h6><i class="bi bi-paperclip me-2"></i><span data-translate-key="attachments_name"></span> (<span data-field="attachments_count"></span>)</h6>
+        <div class="attachment-container">
+            <!-- Attachments will be inserted here -->
+        </div>
+    </div>
+</template>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
+
+<script>
+// =================================================================================
+// DEBUGGING & UTILITIES (Removable in production)
+// =================================================================================
+
+/**
+ * Scans the DOM (including <template> contents) looking for data-translate-key attributes.
+ *
+ * Compares found keys with the translation object for the current language
+ * and returns an array with the results. Also prints a summary to the console.
+ *
+ * Flow:
+ * 1. Collects all keys present in the document and in templates (recursively).
+ * 2. Deduplicates (unless includeDuplicates is true).
+ * 3. Resolves each key as either a direct property or a nested path (dot notation).
+ * 4. Returns an array of objects with presence status, resolved translation, and occurrence count.
+ *
+ * Side effects:
+ * - Generates structured log groups in the console (console.group / console.table).
+ *
+ * @param {Object} currentState - Application state, must include at least { language: string }.
+ * @param {Object<string, Object>} translations - Full translation dictionary loaded by language.
+ * @param {Object} [options] - Scan options.
+ * @param {boolean} [options.includeDuplicates=false] - If true, every occurrence of the key is kept separate.
+ * @param {boolean} [options.sort=true] - If true, sorts the resulting keys alphabetically.
+ * @param {boolean} [options.allowObjects=false] - If the translation is an object, if true serializes it as compact JSON, otherwise an empty string.
+ * @param {string}  [options.dotSeparator='.'] - Separator for resolving nested paths.
+ * @returns {Array<{ key: string, translation: string, exists: boolean, occurrences: number, resolvedViaPath: boolean }>} Detailed report.
+ * @throws {Error} If currentState.language is not a valid string.
+ */
+function scanTranslateKeys(currentState, translations, options = {}) {
+    if (!currentState || typeof currentState.language !== 'string') {
+        throw new Error('currentState.language not defined or invalid.');
+    }
+
+    const {
+        includeDuplicates = false,  // If true, keeps every occurrence
+        sort = true,                // If true, sorts alphabetically by key    
+        allowObjects = false,       // If a key resolves to an object, if true serializes as compact JSON, otherwise returns empty string
+        dotSeparator = '.'          // Separator for dot notation
+    } = options;
+
+    const lang = currentState.language;
+    const langTranslations = (translations && translations[lang]) || {};
+
+    /**
+     * Accumulator map for key statistics (only if includeDuplicates=false).
+     * key -> { count: number }
+     * @type {Map<string,{count:number}>}
+     */
+    const keyStats = new Map();
+    /** @type {string[]} List of keys (if includeDuplicates=true) */
+    const duplicateList = [];
+
+    /**
+     * Extracts keys from a root node (document, element, or fragment) and from nested templates.
+     * @param {ParentNode} root - Node to start scan from.
+     * @returns {void}
+     */
+    function extractKeysFromRoot(root) {
+        // Also checks if the root itself has the attribute
+        if (root instanceof Element && root.hasAttribute && root.hasAttribute('data-translate-key')) {
+            registerKey(root.getAttribute('data-translate-key'));
+        }
+
+        const nodes = root.querySelectorAll ? root.querySelectorAll('[data-translate-key]') : [];
+
+        nodes.forEach(node => {
+            const key = node.getAttribute('data-translate-key');
+            registerKey(key);
+        });
+
+        // Handle nested templates:
+        const templates = root.querySelectorAll ? root.querySelectorAll('template') : [];
+        templates.forEach(tpl => {
+            // Template content is a DocumentFragment
+            extractKeysFromRoot(tpl.content);
+        });
+    }
+
+    /**
+     * Registers a key found during the scan.
+     * @param {string|null} key - The key found.
+     * @returns {void}
+     */
+    function registerKey(key) {
+        if (!key) return;
+
+        if (includeDuplicates) {
+            duplicateList.push(key);
+        } else {
+            if (!keyStats.has(key)) {
+                keyStats.set(key, { count: 1 });
+            } else {
+                keyStats.get(key).count++;
+            }
+        }
+    }
+
+    /**
+     * Resolves a translation key, possibly nested.
+     * 1. Attempts direct access: langTranslations[key]
+     * 2. If undefined, tries as a path split by separator (default '.')
+     * 3. If not found, returns exists=false and empty value.
+     *
+     * @param {string} key - The requested key (e.g. 'folders.inbox').
+     * @returns {{ exists: boolean, value: any, resolvedViaPath: boolean }} Metadata about the result.
+     */
+    function resolveTranslation(key) {
+        // Direct access
+        if (Object.prototype.hasOwnProperty.call(langTranslations, key)) {
+            return {
+                exists: true,
+                value: langTranslations[key],
+                resolvedViaPath: false
+            };
+        }
+
+        // Nested path
+        if (key.includes(dotSeparator)) {
+            const parts = key.split(dotSeparator).filter(Boolean);
+            let cursor = langTranslations;
+
+            for (const part of parts) {
+                if (cursor && Object.prototype.hasOwnProperty.call(cursor, part)) {
+                    cursor = cursor[part];
+                } else {
+                    return { exists: false, value: '', resolvedViaPath: false };
+                }
+            }
+
+            return { exists: true, value: cursor, resolvedViaPath: true };
+        }
+
+        return { exists: false, value: '', resolvedViaPath: false };
+    }
+
+    /**
+     * Normalizes a translation value to a string.
+     * @param {any} raw - Raw value (string | number | boolean | object).
+     * @returns {string} String ready for representation.
+     */
+    function normalizeValue(raw) {
+        if (raw == null) return '';
+        if (typeof raw === 'string') return raw;
+        if (typeof raw === 'number' || typeof raw === 'boolean') return String(raw);
+
+        if (typeof raw === 'object') {
+            return allowObjects ? JSON.stringify(raw) : '';
+        }
+
+        return '';
+    }
+
+    // Entry point: entire document
+    extractKeysFromRoot(document);
+
+    let result;
+
+    if (includeDuplicates) {
+        // Each occurrence keeps position and translation info
+        result = duplicateList.map((key, idx) => {
+            const { exists, value, resolvedViaPath } = resolveTranslation(key);
+
+            return {
+                key,
+                translation: exists ? normalizeValue(value) : '',
+                exists,
+                occurrences: 1,
+                index: idx,
+                resolvedViaPath
+            };
+        });
+    } else {
+        // Only one record per key, with count
+        result = Array.from(keyStats.entries()).map(([key, info]) => {
+            const { exists, value, resolvedViaPath } = resolveTranslation(key);
+
+            return {
+                key,
+                translation: exists ? normalizeValue(value) : '',
+                exists,
+                occurrences: info.count,
+                resolvedViaPath
+            };
+        });
+    }
+
+    if (sort) {
+        result.sort((a, b) => a.key.localeCompare(b.key));
+    }
+
+    // Structured log in console
+    const missing = result.filter(r => !r.exists);
+    const existing = result.filter(r => r.exists);
+
+    console.group(`[scanTranslateKeys] Language: ${lang}`);
+    console.log('Total keys found (unique if includeDuplicates=false):', result.length);
+    console.log('Keys with translation:', existing.length);
+    console.log('Keys without translation:', missing.length);
+    console.log('Resolved via nested path:', result.filter(r => r.resolvedViaPath).length);
+
+    if (missing.length) {
+        console.groupCollapsed('List of missing keys');
+        missing.forEach(m => console.log(m.key));
+        console.groupEnd();
+    }
+
+    console.groupCollapsed('Full detail');
+    console.table(result.map(r => ({
+        key: r.key,
+        exists: r.exists,
+        translation: r.translation,
+        occurrences: r.occurrences,
+        viaPath: r.resolvedViaPath
+    })));
+
+    console.groupEnd();
+    console.groupEnd();
+
+    return result;
+}
+
+/**
+ * Utility wrapper to launch a translation key scan with default options.
+ *
+ * @returns {void}
+ */
+function scanDataset() {
+    const report = scanTranslateKeys(currentState, translations, { includeDuplicates: false, sort: true, allowObjects: false });
+    console.log('Final report:', report);
+}
+
+// =================================================================================
+// 1. BASE VARIABLES AND MOCK DATA
+// =================================================================================
+
+/** @constant {number} Number of emails per page during pagination. */
+const EMAILS_PER_PAGE = 20;
+
+/**
+ * Object containing the simulated responses for various mock endpoints.
+ * The keys are URLs and the values are JSON payloads.
+ *
+ * Note: In a real app, these responses would be provided by a backend server.
+ * Here they are hardcoded for simplicity and to facilitate testing without a server.
+ * Should be removed in production.
+ *
+ * @type {Record<string, any>}
+ */
+const mockApi = {
+    '/api/translations': [
+        { code: 'it', name: 'Italiano', flag: 'https://flagcdn.com/16x12/it.png' },
+        { code: 'en', name: 'English', flag: 'https://flagcdn.com/16x12/gb.png' },
+        { code: 'fr', name: 'Français', flag: 'https://flagcdn.com/16x12/fr.png' },
+        { code: 'de', name: 'Deutsch', flag: 'https://flagcdn.com/16x12/de.png' }
+    ],
+    '/api/translations?l=it': { page_title: "Webmail Multi-Account", navbar_brand: "WebMail UI", search_placeholder: "Cerca email...", search_button: "Cerca", settings_button: "Impostazioni", theme_header: "Tema", theme_light: "Chiaro", theme_dark: "Scuro", language_header: "Lingua", compose_button: "Scrivi", select_email_placeholder: "Seleziona un'email per leggerla.", reply_button: "Rispondi", forward_button: "Inoltra", delete_button: "Elimina", from_label: "Da", to_label: "A", subject_label: "Oggetto", folders: { inbox: "Posta in Arrivo", sent: "Posta Inviata", drafts: "Bozze", spam: "Spam", trash: "Cestino" }, loading: "Caricamento...", back_button: "Indietro", no_emails: "Nessuna email qui.", attachments_name: "Allegati" },
+    '/api/translations?l=en': { page_title: "Multi-Account Webmail", navbar_brand: "WebMail UI", search_placeholder: "Search mail...", search_button: "Search", settings_button: "Settings", theme_header: "Theme", theme_light: "Light", theme_dark: "Dark", language_header: "Language", compose_button: "Compose", select_email_placeholder: "Select an email to read it.", reply_button: "Reply", forward_button: "Forward", delete_button: "Delete", from_label: "From", to_label: "To", subject_label: "Subject", folders: { inbox: "Inbox", sent: "Sent", drafts: "Drafts", spam: "Spam", trash: "Trash" }, loading: "Loading...", back_button: "Back", no_emails: "No emails here.", attachments_name: "Attachments" },
+    '/api/translations?l=fr': { page_title: "Webmail Multi-Compte", navbar_brand: "WebMail UI", search_placeholder: "Rechercher un e-mail...", search_button: "Rechercher", settings_button: "Paramètres", theme_header: "Thème", theme_light: "Clair", theme_dark: "Sombre", language_header: "Langue", compose_button: "Écrire", select_email_placeholder: "Sélectionnez un e-mail pour le lire.", reply_button: "Répondre", forward_button: "Transférer", delete_button: "Supprimer", from_label: "De", to_label: "À", subject_label: "Objet", folders: { inbox: "Boîte de réception", sent: "Messages envoyés", drafts: "Brouillons", spam: "Spam", trash: "Corbeille" }, loading: "Chargement...", back_button: "Retour", no_emails: "Aucun e-mail ici.", attachments_name: "Pièces jointes" },
+    '/api/translations?l=de': { page_title: "Multi-Konto Webmail", navbar_brand: "WebMail UI", search_placeholder: "E-Mail suchen...", search_button: "Suchen", settings_button: "Einstellungen", theme_header: "Thema", theme_light: "Hell", theme_dark: "Dunkel", language_header: "Sprache", compose_button: "Verfassen", select_email_placeholder: "Wählen Sie eine E-Mail aus, um sie zu lesen.", reply_button: "Antworten", forward_button: "Weiterleiten", delete_button: "Löschen", from_label: "Von", to_label: "An", subject_label: "Betreff", folders: { inbox: "Posteingang", sent: "Gesendet", drafts: "Entwürfe", spam: "Spam", trash: "Papierkorb" }, loading: "Laden...", back_button: "Zurück", no_emails: "Keine E-Mails hier.", attachments_name: "Anhänge" },
+    '/api/accounts': [
+        { id: '9fe09857c0ca36aaab092c59f57db097ad92cc4e', email: 'mario.rossi@email.com' },
+        { id: '193f97fc937bbd3b147b60ca7da0389996b958db', email: 'luigi.verdi@email.work' }
+    ],
+    '/api/folders': [
+        { '9fe09857c0ca36aaab092c59f57db097ad92cc4e': [ 'inbox', 'sent', 'drafts', 'spam', 'trash' ] },
+        { '193f97fc937bbd3b147b60ca7da0389996b958db': [ 'inbox', 'sent', 'drafts' ] }
+    ],
+};
+
+// Async variable declarations for main data
+let translations = {}; 
+let mockDatabaseFolders = [];
+let mockDatabaseAccounts = [];
+let mockDatabaseLanguages = []; 
+
+/**
+ * Structure for managing cache for accounts and emails.
+ * mockDatabase.emails[accountId][folderKey] will have the structure:
+ * { 
+ * items: [...], // Array of emails loaded so far
+ * total: 100, // Total emails in the folder (from server/mock)
+ * pagesLoaded: 1 // Number of pages already loaded
+ * }
+ * @type {object}
+ */
+const mockDatabase = { 
+    accounts: [], 
+    emails: {} 
+}; 
+
+/**
+ * Fallback function: tries real fetch, then uses mockApi if 404 or error.
+ * @param {string} url - Requested endpoint.
+ * @param {RequestInit} [options] - Standard fetch options.
+ * @returns {Promise<Response>} Mock or real compatible Response object.
+ */
+const mockFetch = (url, options) => {
+    return fetch(url, options)
+        .then(response => {
+            if (response.status === 404) {
+                if (mockApi[url]) {
+                    return Promise.resolve({ ok: true, json: () => Promise.resolve(mockApi[url]) });
+                }
+                return Promise.reject(new Error(`Simulated URL not found: ${url}`));
+            }
+            return response;
+        })
+        .catch(() => {
+            if (mockApi[url]) {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve(mockApi[url]) });
+            }
+            return Promise.reject(new Error(`Simulated URL not found: ${url}`));
+        });
+};
+
+/**
+ * UI state management structure.
+ * @type {object}
+ */
+let currentState = {
+    language: 'it',
+    theme: 'light',
+    activeAccount: '9fe09857c0ca36aaab092c59f57db097ad92cc4e',
+    activeFolder: 'inbox',
+    selectedEmailId: null,
+    isLoading: false 
+};
+
+// =================================================================================
+// 2. MOCK GENERATION LOGIC
+// =================================================================================
+
+/**
+ * Utility function to format bytes into human-readable strings.
+ * @param {number} bytes
+ * @returns {string} Formatted size (e.g. "1.2 MB").
+ */
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+/**
+ * Generates a mock array of attachments for an email.
+ * About 30% of emails will have attachments.
+ * @returns {Array} Array of attachment objects.
+ */
+function generateMockAttachments() {
+    if (Math.random() < 0.7) return []; // 70% of emails without attachments
+    
+    const fileNames = [
+        "Rapporto_Q3_2025_Completo_e_Finale.pdf",
+        "Immagine_vacanza_roma.jpg",
+        "Schema_progetto.zip",
+        "Preventivo_dettagliato_cliente.xlsx",
+        "Note_riunione.docx",
+        "foto-del-gatto-con-nome-lunghissimo-per-testare-la-troncatura.png"
+    ];
+    const fileSizes = [50000, 1200000, 2500000, 45000, 800000, 1024]; // Bytes
+    const fileTypes = ["pdf", "jpg", "zip", "xlsx", "docx", "png"];
+
+    const attachmentCount = Math.floor(Math.random() * 4) + 1; // 1 to 4 attachments
+
+    const attachments = [];
+    const usedIndices = new Set();
+    
+    for (let i = 0; i < attachmentCount; i++) {
+        let index;
+        do {
+            index = Math.floor(Math.random() * fileNames.length);
+        } while (usedIndices.has(index));
+        usedIndices.add(index);
+
+        attachments.push({
+            name: fileNames[index],
+            size: formatFileSize(fileSizes[index]),
+            type: fileTypes[index],
+            // Add a dummy URL for preview/download
+            url: `mock-download-link-${Math.random().toString(36).substring(7)}` 
+        });
+    }
+
+    return attachments;
+}
+
+/**
+ * Generates a full set of mock emails for a specific folder.
+ * @param {number} count - Number of emails to generate.
+ * @param {string} folderName - Folder name (inbox, sent, etc.).
+ * @returns {{emails: Array, total: number}} Object containing the list and the total.
+ */
+function generateMockEmails(count, folderName) {
+    const emails = [];
+    const senders = [
+        'Laura Bianchi',
+        'Marketing Team',
+        'GitHub',
+        'Amazon',
+        'LinkedIn',
+        'Intesa Bank',
+        'Sales Office',
+        'Netflix'
+    ];
+    const subjects = [
+        'Weekly report',
+        'New campaign',
+        'Push notification',
+        'Your order has been shipped',
+        'You have a new contact',
+        'Important communication',
+        'Invoice #123',
+        'New releases'
+    ];
+
+    for (let i = 1; i <= count; i++) {
+        const sender = senders[Math.floor(Math.random() * senders.length)];
+        const subject = subjects[Math.floor(Math.random() * subjects.length)];
+
+        emails.push({
+            id: i,
+            from: folderName === 'sent' ? 'Me' : sender,
+            to: folderName === 'sent' ? 'destinatario@example.com' : 'me@example.com',
+            subject: `${subject} - ${folderName} #${i}`,
+            snippet: 'Lorem ipsum dolor sit amet, consectetur adipiscing elit...',
+            body: `
+                <h1>${subject} (${folderName}) #${i}</h1>
+                <p>This is the body of the test email number ${i} in the ${folderName} folder.</p>
+                <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>
+                <p>Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p>
+                <p>Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.</p>
+                <p>Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>
+                <br/>
+                <p>Curabitur pretium tincidunt lacus. Nulla gravida orci a odio. Nullam varius, turpis et commodo pharetra, est eros bibendum elit, nec luctus magna felis sollicitudin mauris. Integer in mauris eu nibh euismod gravida. Duis ac tellus et risus vulputate vehicula. Donec lobortis risus a elit. Etiam tempor. Ut ullamcorper, ligula eu tempor congue, eros est euismod turpis, id tincidunt sapien risus a quam. Maecenas fermentum consequat mi. Donec fermentum. Pellentesque malesuada nulla a mi. Duis sapien sem, aliquet nec, commodo eget, consequat quis, neque. Aliquam faucibus, elit ut dictum aliquet, felis nisl adipiscing sapien, sed malesuada diam lacus eget erat. Cras mollis scelerisque nunc. Nullam arcu. Aliquam consequat. Curabitur augue lorem, dapibus quis, laoreet et, pretium ac, nisi. Aenean magna nisl, mollis quis, molestie eu, feugiat in, orci. In hac habitasse platea dictumst.</p>
+                <p>Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Vestibulum tortor quam, feugiat vitae, ultricies eget, tempor sit amet, ante. Donec eu libero sit amet quam egestas semper. Aenean ultricies mi vitae est. Mauris placerat eleifend leo. Quisque sit amet est et sapien ullamcorper pharetra. Vestibulum erat wisi, condimentum sed, commodo vitae, ornare sit amet, wisi. Aenean fermentum, elit eget tincidunt condimentum, eros ipsum rutrum orci, sagittis tempus lacus enim ac dui. Donec non enim in turpis pulvinar facilisis. Ut felis. Praesent dapibus, neque id cursus faucibus, tortor neque egestas augue, eu vulputate magna eros eu erat. Aliquam erat volutpat. Nam dui mi, tincidunt quis, accumsan porttitor, facilisis luctus, metus</p>
+                <br/>
+                <br/>
+                <p>-- <br/>Digital Signature</p>
+                <hr/>
+                <p><small>This is an automatically generated test email. Do not reply to this message.</small></p>
+            `,
+            unread: i <= 5 && folderName === 'inbox',
+            date: new Date(Date.now() - i * 3600 * 1000).toISOString(),
+            attachments: generateMockAttachments()
+        });
+    }
+
+    return {
+        emails: emails,
+        total: count
+    }
+}
+
+/**
+ * Builds the mock API for pagination, using an IIFE.
+ * Populates the mockApi object with paginated email endpoints for each account/folder.
+ */
+(function buildMockApi() {
+    const mockAccounts = mockApi['/api/accounts'];
+    const mockFolders = mockApi['/api/folders'];
+    // We don't use a global allMockEmails, but generate and populate mockApi directly.
+
+    mockAccounts.forEach(account => {
+        const accountId = account.id;
+        const folderData = mockFolders.find(f => f[accountId]);
+
+        if (folderData) {
+            folderData[accountId].forEach(folder => {
+                // Generate a random number of emails (0-100) for the folder
+                const randomCount = Math.floor(Math.random() * 101); 
+                const folderSet = generateMockEmails(randomCount, folder);
+
+                const totalEmails = folderSet.total;
+                const totalPages = Math.ceil(totalEmails / EMAILS_PER_PAGE);
+
+                for (let p = 1; p <= totalPages; p++) {
+                    const start = (p - 1) * EMAILS_PER_PAGE;
+                    const end = start + EMAILS_PER_PAGE;
+                    // Endpoint for pagination
+                    const url = `/api/emails?account=${accountId}&folder=${folder}&page=${p}&pageSize=${EMAILS_PER_PAGE}`;
+
+                    // Set the response for the specific page
+                    mockApi[url] = {
+                        page: p,
+                        pageSize: EMAILS_PER_PAGE,
+                        total: totalEmails,
+                        items: folderSet.emails.slice(start, end)
+                    };
+                }
+                // Edge case: folder with 0 emails to avoid bugs
+                if (totalEmails === 0) {
+                    const url = `/api/emails?account=${accountId}&folder=${folder}&page=1&pageSize=${EMAILS_PER_PAGE}`;
+                    mockApi[url] = { page: 1, pageSize: EMAILS_PER_PAGE, total: 0, items: [] };
+                }
+            });
+        }
+    });
+})();
+
+// =================================================================================
+// 3. Rendering and View Functions (with pagination and lazy loading)
+// =================================================================================
+
+/**
+ * Utility function to show the "Back" button on mobile if needed.
+ * @returns {void}
+ */
+function renderMobileBackButton() {
+    const emailView = document.getElementById('email-view');
+    const backTemplate = document.getElementById('email-mobile-back');
+    const backButton = backTemplate.content.cloneNode(true);
+
+    const backButtonElement = backButton.querySelector('button.back-button');
+    backButtonElement.textContent = getTranslation('back_button', backButtonElement);
+
+    if (window.innerWidth < 992 && !emailView.querySelector('.back-button')) {
+        emailView.prepend(backButton);
+    }
+}
+
+/**
+ * Renders the dropdown menu for accounts.
+ * @returns {void}
+ */
+function renderAccounts() {
+    const accountList = document.getElementById('account-list');
+    const accountItem = document.getElementById('account-item');
+
+    accountList.innerHTML = '';
+
+    mockDatabase.accounts.forEach(account => {
+        const accountLink = accountItem.content.cloneNode(true);
+        accountLink.querySelector('a').textContent = account.email;
+        accountLink.querySelector('a').onclick = (e) => {
+            e.preventDefault(); 
+            switchAccount(account.id); 
+        };
+        accountList.appendChild(accountLink);
+    });
+
+    document.getElementById('current-account-label').textContent = mockDatabase.accounts.find(a => a.id === currentState.activeAccount).email;
+}
+
+/**
+ * Renders the list of folders for the active account and updates unread badges.
+ * @returns {void}
+ */
+function renderFolders() {
+    const folderList = document.getElementById('folder-list');
+    const folderListItem = document.getElementById('folder-item');
+    const folderListContent = document.getElementById('folder-item-content');
+    const folderListBadge = document.getElementById('folder-item-badge');
+
+    folderList.innerHTML = '';
+
+    const folderKeys = ['inbox', 'sent', 'drafts', 'spam', 'trash'];
+
+    const folderIcons = { 
+        inbox: 'bi-inbox-fill', 
+        sent: 'bi-send-fill', 
+        drafts: 'bi-file-earmark-text-fill', 
+        spam: 'bi-shield-fill-exclamation', 
+        trash: 'bi-trash-fill' 
+    };
+    
+    // Finds folders available for the active account
+    const accountFoldersData = mockDatabaseFolders.find(f => f[currentState.activeAccount]);
+    const availableFolders = accountFoldersData ? accountFoldersData[currentState.activeAccount] : [];
+
+    folderKeys.forEach(key => {
+        // Only show the folder if available for the account
+        if (!availableFolders.includes(key)) return;
+
+        const folderLink = folderListItem.content.cloneNode(true);
+        if (currentState.activeFolder === key) {
+            folderLink.querySelector('a').classList.add('active');
+        } else {
+            folderLink.querySelector('a').classList.remove('active');
+        }
+        folderLink.querySelector('a').dataset.folderKey = key;
+        
+        let unreadCount = 0;
+        // CRITICAL: Calculate unreadCount ONLY if the folder data is already cached.
+        const emailsInFolder = mockDatabase.emails[currentState.activeAccount] && mockDatabase.emails[currentState.activeAccount][key];
+        
+        if (emailsInFolder && emailsInFolder.items) {
+            // If folder is loaded (cached), calculate the count
+            unreadCount = emailsInFolder.items.filter(e => e.unread).length;
+        }
+
+        const folderContent = folderListContent.content.cloneNode(true);
+        folderContent.querySelector('i').classList.add(folderIcons[key]);
+        folderContent.querySelector('span[name="folderKey"]').setAttribute('data-translate-key', `folders.${key}`);
+        folderContent.querySelector('span[name="folderKey"]').setAttribute('aria-label', key.charAt(0).toUpperCase() + key.slice(1)); // Fallback label
+
+        const folderContentElement = folderContent.querySelector('span[name="folderKey"]');
+        folderContentElement.textContent = getTranslation(`folders.${key}`, folderContentElement);
+
+        const folderBadge = folderListBadge.content.cloneNode(true);
+        if (unreadCount > 0) {
+            folderBadge.querySelector('span').textContent = unreadCount;
+        } else {
+            folderBadge.querySelector('span').remove(); // Remove badge if zero
+        }
+
+        folderContent.appendChild(folderBadge);
+        folderLink.querySelector('a').appendChild(folderContent);
+        folderLink.querySelector('a').addEventListener('click', async (e) => {
+            e.preventDefault(); 
+            await switchFolder(key); 
+        });
+
+        folderList.appendChild(folderLink);
+    });
+}
+
+/**
+ * Appends a list of emails to the email list container.
+ * @param {Array<Object>} emails - Array of email objects to append.
+ * @returns {void}
+ */
+function appendEmailsToList(emails) {
+    const emailContainer = document.getElementById('email-list-container');
+    const emailItem = document.getElementById('email-list-item');
+    const emailContent = document.getElementById('email-list-content');
+
+    emails.forEach(email => {
+        const itemLink = emailItem.content.cloneNode(true);
+        if (email.unread) {
+            itemLink.querySelector('a').classList.add('fw-bold');
+        } else {
+            itemLink.querySelector('a').classList.remove('fw-bold');
+        }
+        itemLink.querySelector('a').dataset.emailId = email.id;
+
+        const itemContent = emailContent.content.cloneNode(true);
+        itemContent.querySelector('[data-filed="activeFolder"]').textContent = currentState.activeFolder === 'sent' ? `To: ${email.to}` : email.from;
+        itemContent.querySelector('[data-field="subject"]').textContent = email.subject;
+        itemContent.querySelector('[data-field="snippet"]').textContent = email.snippet;
+
+        itemLink.querySelector('a').appendChild(itemContent);
+
+        itemLink.querySelector('a').addEventListener('click', (e) => { 
+            e.preventDefault(); 
+            selectEmail(email.id); 
+        });
+
+        emailContainer.appendChild(itemLink);
+    });
+}
+
+/**
+ * Returns the recommended Bootstrap icon class for a given file type.
+ * @param {string} fileType - File extension (e.g. 'pdf', 'jpg').
+ * @returns {string} Bootstrap icon CSS class.
+ */
+function getFileIcon(fileType) {
+    switch (fileType) {
+        case 'pdf':
+            return 'bi-file-earmark-pdf-fill text-danger';
+        case 'doc':
+        case 'docx':
+            return 'bi-file-earmark-word-fill text-primary';
+        case 'xls':
+        case 'xlsx':
+            return 'bi-file-earmark-excel-fill text-success';
+        case 'ppt':
+        case 'pptx':
+            return 'bi-file-earmark-ppt-fill text-warning';
+        case 'zip':
+        case 'rar':
+            return 'bi-file-earmark-zip-fill text-secondary';
+        case 'jpg':
+        case 'jpeg':
+        case 'png':
+        case 'gif':
+            return 'bi-image-fill text-info';
+        default:
+            return 'bi-file-earmark-fill text-secondary';
+    }
+}
+
+/**
+ * Builds the DOM (DocumentFragment) for the attachments section using templates:
+ * - attachment-content (main container + header)
+ * - attachment-item (single attachment card)
+ * - attachment-img (image preview)
+ * - attachment-icon (generic file icon)
+ *
+ * @param {Array<{name:string,size:string,type:string,url:string}>} attachments
+ * @returns {DocumentFragment|null} Fragment ready to append, or null if no attachments.
+ */
+function renderAttachments(attachments) {
+    if (!attachments || attachments.length === 0) {
+        return '';
+    }
+
+    const contentTpl = document.getElementById('attachment-content');
+    const itemTpl = document.getElementById('attachment-item');
+    const imgTpl = document.getElementById('attachment-img');
+    const iconTpl = document.getElementById('attachment-icon');
+
+    if (!contentTpl || !itemTpl || !imgTpl || !iconTpl) {
+        console.warn('Missing attachment templates, fallback: nothing rendered.');
+        return null;
+    }
+
+    // Clone main container
+    const fragment = contentTpl.content.cloneNode(true);
+
+    // Header: section name + count
+    const headerLabel = fragment.querySelector('[data-translate-key="attachments_name"]');
+    if (headerLabel) {
+        headerLabel.textContent = getTranslation('attachments_name', headerLabel);
+    }
+    const countSpan = fragment.querySelector('[data-field="attachments_count"]');
+    if (countSpan) {
+        countSpan.textContent = attachments.length;
+    }
+
+    // Attachment cards container
+    const container = fragment.querySelector('.attachment-container');
+
+    attachments.forEach(att => {
+        const itemFrag = itemTpl.content.cloneNode(true);
+        const card = itemFrag.querySelector('.attachment-card');
+
+        // Media (image preview or icon)
+        let mediaNode;
+        const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(att.type);
+        if (isImage) {
+            mediaNode = imgTpl.content.cloneNode(true).querySelector('img');
+            mediaNode.src = att.url;
+            mediaNode.alt = att.name;
+            mediaNode.onerror = function() {
+                this.onerror = null;
+                this.src = `https://placehold.co/40x40/adb5bd/ffffff?text=${att.type.toUpperCase()}`;
+            };
+        } else {
+            mediaNode = iconTpl.content.cloneNode(true).querySelector('i');
+            const iconClass = getFileIcon(att.type);
+            iconClass.split(' ').forEach(cls => mediaNode.classList.add(cls));
+            mediaNode.setAttribute('aria-hidden', 'true');
+        }
+
+        // Insert media at the beginning of the card
+        card.insertBefore(mediaNode, card.firstChild);
+
+        // Info section
+        const nameEl = card.querySelector('.attachment-filename');
+        const sizeEl = card.querySelector('.attachment-size');
+        const linkEl = card.querySelector('a');
+
+        if (nameEl) {
+            nameEl.textContent = att.name;
+            nameEl.title = att.name;
+        }
+        if (sizeEl) {
+            sizeEl.textContent = att.size;
+        }
+        if (linkEl) {
+            linkEl.href = att.url;
+            linkEl.download = att.name;
+            linkEl.setAttribute('aria-label', `Download ${att.name}`);
+        }
+
+        container.appendChild(itemFrag);
+    });
+
+    return fragment;
+}
+
+/**
+ * Renders the content of the selected email, or shows the placeholder if none is selected.
+ * @returns {void}
+ */
+function renderEmailContent() {
+    const emailView = document.getElementById('email-view');
+    const placeholder = document.getElementById('email-empty').content.cloneNode(true);
+
+    if (currentState.selectedEmailId === null) {
+        const placeholderElement = placeholder.querySelector('[data-translate-key="select_email_placeholder"]');
+        placeholderElement.textContent = getTranslation("select_email_placeholder", placeholderElement);
+        emailView.innerHTML = '';
+        emailView.appendChild(placeholder);
+        return;
+    }
+
+    let email;
+    // Search the email across every folder of the active account
+    for (const folder in mockDatabase.emails[currentState.activeAccount]) {
+        const folderCache = mockDatabase.emails[currentState.activeAccount][folder]; // Folder cache object
+        const found = folderCache.items.find(e => e.id === currentState.selectedEmailId); // APPLIED FIX: search inside .items array
+        if (found) { 
+            email = found; 
+            break; 
+        }
+    }
+
+    if (!email) { 
+        currentState.selectedEmailId = null; 
+        renderEmailContent(); // Show placeholder
+        return; 
+    }
+
+    // Build the attachments section (returns a DocumentFragment)
+    const attachmentsFragment = renderAttachments(email.attachments);
+
+    // Clear previous content
+    emailView.innerHTML = '';
+
+    // Add the mobile back button if needed
+    renderMobileBackButton();
+
+    const labelsHost = document.getElementById('email-content-labels').content.cloneNode(true);
+    const labelsHostFromLabel = labelsHost.querySelector('[data-translate-key="from_label"]');
+    const labelsHostToLabel = labelsHost.querySelector('[data-translate-key="to_label"]');
+
+    labelsHostFromLabel.textContent = getTranslation('from_label', labelsHostFromLabel);
+    labelsHostToLabel.textContent = getTranslation('to_label', labelsHostToLabel);
+    labelsHost.querySelector('[data-field="from"]').textContent = email.from || 'N/A';
+    labelsHost.querySelector('[data-field="to"]').textContent = email.to || 'N/A';
+
+    const emailContent = document.getElementById('email-content').content.cloneNode(true);
+    emailContent.querySelector('[data-email-subject]').textContent = email.subject || '(No Subject)';
+    const labelsContainer = emailContent.querySelector('[data-email-labels]');
+    labelsContainer.innerHTML = '';
+    labelsContainer.appendChild(labelsHost);
+    emailContent.querySelector('[data-email-body]').innerHTML = email.body || '(No Content)';
+
+    const footerHost = emailContent.querySelector('[data-email-footer]');
+    footerHost.innerHTML = '';
+
+    if (attachmentsFragment) {
+        footerHost.appendChild(attachmentsFragment);
+        footerHost.style.display = '';
+    } else {
+        footerHost.style.display = 'none';
+    }
+
+    emailView.appendChild(emailContent);
+}
+
+/**
+ * Renders the email list for the active folder using cached data.
+ * @returns {void}
+ */
+function renderEmailList() {
+    const emailContainer = document.getElementById('email-list-container');
+    const folderTitle = document.getElementById('current-folder-title');
+    const emailCountBadge = document.getElementById('email-count-badge');
+    const emailNotFound = document.getElementById('email-not-found').content.cloneNode(true);
+    
+    // Clears the list
+    emailContainer.innerHTML = '';
+    
+    const folderCache = mockDatabase.emails[currentState.activeAccount] && mockDatabase.emails[currentState.activeAccount][currentState.activeFolder];
+    
+    const emails = folderCache?.items || [];
+    const totalEmails = folderCache?.total || 0;
+    
+    folderTitle.textContent = translations[currentState.language]?.folders?.[currentState.activeFolder] || currentState.activeFolder;
+    emailCountBadge.textContent = totalEmails;
+
+    if (totalEmails === 0) {
+        emailNotFound.querySelector('[data-translate-key="no_emails"]').textContent = translations[currentState.language]?.no_emails || "No emails here.";   
+        emailContainer.innerHTML = '';
+        emailContainer.appendChild(emailNotFound);
+
+        return;
+    }
+    
+    // Appends the loaded emails (first page or those already cached)
+    appendEmailsToList(emails);
+}
+
+/**
+ * Unified function to load email data from the API (mock or real) and update the cache.
+ * @param {string} accountId The account ID.
+ * @param {string} folderKey The folder key.
+ * @param {number} page The page number to load (starts from 1).
+ * @param {boolean} isInitialLoad If true, shows the global loading overlay.
+ * @returns {object|null} The loaded page data or null in case of error.
+ */
+async function loadEmails(accountId, folderKey, page, isInitialLoad = false) {
+    const loadingOverlay = document.getElementById('loading-overlay');
+    
+    if (isInitialLoad) {
+        loadingOverlay.style.display = 'flex'; 
+    } 
+
+    const key = `/api/emails?account=${accountId}&folder=${folderKey}&page=${page}&pageSize=${EMAILS_PER_PAGE}`;
+    
+    try {
+        const data = await mockFetch(key).then(res => res.json());
+
+        // Initializes the cache if it doesn't exist
+        if (!mockDatabase.emails[accountId]) {
+            mockDatabase.emails[accountId] = {};
+        }
+        if (!mockDatabase.emails[accountId][folderKey]) {
+            mockDatabase.emails[accountId][folderKey] = { items: [], total: 0, pagesLoaded: 0 };
+        }
+        
+        const folderCache = mockDatabase.emails[accountId][folderKey];
+
+        // Adds loaded items and updates total
+        if (data.items && data.items.length > 0) {
+            folderCache.items.push(...data.items);
+            folderCache.pagesLoaded = page; // Updates the last loaded page
+            folderCache.total = data.total;
+        } else if (page === 1) {
+             // If first page has no items
+            folderCache.total = data.total || 0;
+            folderCache.pagesLoaded = 1;
+        }
+
+        return data; 
+    } catch (error) {
+        console.error(`Error loading emails for ${accountId}/${folderKey} (Page ${page}):`, error);
+        
+        // Ensures cache is initialized even in case of error
+        if (!mockDatabase.emails[accountId]) {
+            mockDatabase.emails[accountId] = {};
+        }
+        if (!mockDatabase.emails[accountId][folderKey]) {
+            mockDatabase.emails[accountId][folderKey] = { items: [], total: 0, pagesLoaded: 0 };
+        }
+        return null;
+    } finally {
+        if (isInitialLoad) {
+            loadingOverlay.style.display = 'none'; // HIDES the global overlay
+        } 
+    }
+}
+
+/**
+ * Loads the first page data for a specific folder/account and caches it.
+ * @param {string} accountId - The account ID.
+ * @param {string} folderKey - The folder key.
+ * @returns {Promise<void>}
+ */
+async function loadFolderData(accountId, folderKey) {
+    // Loads the first page (page: 1) with the global overlay (isInitialLoad = true)
+    // loadEmails clears or initializes the folder cache before pushing data
+    await loadEmails(accountId, folderKey, 1, true); 
+}
+
+/**
+ * Sequentially loads the next page of emails when the user scrolls.
+ * @returns {void}
+ */
+function loadMoreEmails() {
+    const accountId = currentState.activeAccount;
+    const folderKey = currentState.activeFolder;
+    const folderCache = mockDatabase.emails[accountId] && mockDatabase.emails[accountId][folderKey];
+    
+    // Returns if already loading or if no data in cache
+    if (currentState.isLoading || !folderCache) {
+        return;
+    }
+    
+    const nextPage = folderCache.pagesLoaded + 1;
+    const totalPages = Math.ceil(folderCache.total / EMAILS_PER_PAGE);
+    
+    // Returns if there are no more pages to load
+    if (nextPage > totalPages) {
+        return;
+    }
+    
+    // Shows loading indicator at the bottom of the list
+    const emailContainer = document.getElementById('email-list-container');
+    const loadingIndicatorTemplate = document.querySelector("#email-loading").content.cloneNode(true);
+    loadingIndicatorTemplate.querySelector("[data-translate-key='loading']").textContent = translations[currentState.language]?.loading || "Loading...";
+    emailContainer.appendChild(loadingIndicatorTemplate);
+    
+    // Prevents multiple loads
+    currentState.isLoading = true;
+    
+    // Uses setTimeout to allow the DOM to update and show the loading indicator
+    setTimeout(() => {
+        // Loads the next page
+        loadEmails(accountId, folderKey, nextPage, false).then(data => {
+            // Removes the indicator
+            document.getElementById('loading-indicator')?.remove();
+            
+            if (data && data.items && data.items.length > 0) {
+                // Appends the items from the just-loaded page
+                appendEmailsToList(data.items);
+            }
+
+            // Releases the loading lock
+            currentState.isLoading = false; 
+        }).catch(() => {
+            document.getElementById('loading-indicator')?.remove();
+            currentState.isLoading = false; 
+        });
+    }, 500); // Short 500ms delay for rendering
+}
+
+// =================================================================================
+// 4. State Management and Interaction Functions
+// =================================================================================
+
+/**
+ * Returns the translation for a key using the current language.
+ * Supports nested keys with dot notation (e.g., "folders.inbox").
+ * Fallback order:
+ * 1. Found translation (including nested)
+ * 2. aria-label of the element (if present and not empty)
+ * 3. Placeholder (INPUT only) or existing textContent (if not empty)
+ * 4. The key itself
+ *
+ * @param {string} key - Translation key, can be nested (e.g., "folders.sent").
+ * @param {HTMLElement|null} [element=null] - Associated element for fallback.
+ * @returns {string} Resolved text.
+ */
+function getTranslation(key, element = null) {
+    const langDict = translations[currentState.language] || {};
+
+    let resolved;
+
+    if (key && key.includes('.')) {
+        // Nested resolution
+        resolved = key.split('.').reduce(
+            (acc, part) => (acc && Object.prototype.hasOwnProperty.call(acc, part)) ? acc[part] : undefined,
+            langDict
+        );
+    } else {
+        resolved = langDict[key];
+    }
+
+    if (typeof resolved === 'string' && resolved.trim() !== '') {
+        return resolved;
+    }
+
+    console.warn(`Missing translation for key "${key}" in language "${currentState.language}".`);
+
+    if (element && element.getAttribute) {
+        const ariaLabel = element.getAttribute('aria-label');
+        if (ariaLabel && ariaLabel.trim() !== '') {
+            console.log(`Using aria-label as fallback for key "${key}": "${ariaLabel.trim()}"`);
+            return ariaLabel.trim();
+        }
+    }
+
+    if (element) {
+        if (element.tagName === 'INPUT') {
+            const placeholder = element.placeholder;
+            if (placeholder && placeholder.trim() !== '') {
+                console.log(`Using existing placeholder as fallback for key "${key}": "${placeholder.trim()}"`);
+                return placeholder.trim();
+            }
+        } else {
+            const current = (element.textContent || '').trim();
+            if (current !== '') {
+                console.log(`Using existing text content as fallback for key "${key}": "${current}"`);
+                return current;
+            }
+        }
+    } else {
+        console.error(`Element not provided or invalid for key "${key}".`);
+    }
+
+    return key;
+}
+
+/**
+ * Applies translations to all elements marked with data-translate-key.
+ * Also updates the title of the active folder.
+ * @param {string} lang - Target language code.
+ * @returns {void}
+ */
+function applyTranslations(lang) {
+    currentState.language = lang;
+    document.documentElement.lang = lang;
+    const elements = document.querySelectorAll('[data-translate-key]');
+    
+    // Updates all static elements
+    elements.forEach(el => {
+        const key = el.dataset.translateKey;
+
+        // Fallback to key code if translation not found
+        const translation = key.split('.').reduce(
+            (obj, k) => (obj && obj[k] !== undefined) ? obj[k] : undefined, 
+            translations[lang] || {}
+        );
+
+        let finalText;
+
+        if (translation === undefined || translation === null || translation === '') {
+            // Priority fallback: aria-label (if present)
+            const ariaLabel = el.getAttribute('aria-label');
+
+            console.warn(`Missing translation for key "${key}" in language "${lang}". Using fallback.`);
+
+            if (ariaLabel && ariaLabel.trim() !== '') {
+                finalText = ariaLabel.trim();
+            } else {
+                // Further fallback: existing text/placeholder
+                if (el.tagName === 'INPUT') {
+                    finalText = el.placeholder && el.placeholder.trim() !== '' ? el.placeholder : key;
+                } else {
+                    const current = (el.textContent || '').trim();
+                    finalText = current !== '' ? current : key;
+                }
+            }
+        } else {
+            finalText = translation;
+            // If aria-label is missing and the element is interactive, we can set it for accessibility
+            if (!el.hasAttribute('aria-label') && ['BUTTON', 'A'].includes(el.tagName)) {
+                el.setAttribute('aria-label', finalText);
+            }
+        }
+
+        if (el.tagName === 'INPUT') {
+            // Update placeholder
+            el.placeholder = finalText;
+            if (!el.hasAttribute('aria-label')) {
+                el.setAttribute('aria-label', finalText);
+            }
+        } else {
+            el.textContent = finalText;
+        }
+    });
+
+    // Update the folder title
+    const currentFolderKey = currentState.activeFolder;
+    const folderName = translations[lang]?.folders?.[currentFolderKey];
+
+    const folderTitleEl = document.getElementById('current-folder-title');
+    if (folderTitleEl) {
+        if (folderName === undefined || folderName === null || folderName === '') {
+            // Folder fallback: aria-label > existing text > key
+            const ariaFolder = folderTitleEl.getAttribute('aria-label');
+            const existing = (folderTitleEl.textContent || '').trim();
+            folderTitleEl.textContent = ariaFolder?.trim() || existing || currentFolderKey;
+        } else {
+            folderTitleEl.textContent = folderName;
+            if (!folderTitleEl.hasAttribute('aria-label')) {
+                folderTitleEl.setAttribute('aria-label', folderName);
+            }
+        }
+    }
+}
+
+/**
+ * Changes the interface language, loading translations if needed and updating the UI.
+ * @param {string} lang - Language code (e.g., 'it', 'en').
+ * @returns {Promise<void>}
+ */
+async function changeLanguage(lang) {
+    if (currentState.language === lang) return;
+
+    // 1. Check if translations are already loaded
+    if (!translations[lang] || Object.keys(translations[lang]).length === 0) {
+        try {
+            // Load missing translation
+            const translationResponse = await mockFetch(`/api/translations?l=${lang}`).then(res => res.json());
+            translations[lang] = translationResponse;
+        } catch (error) {
+            console.error(`Error loading translations for ${lang}:`, error);
+            return;
+        }
+    }
+    
+    // 2. Apply translations to static texts
+    applyTranslations(lang);
+    
+    // 3. Re-render only dynamic elements using translations (such as folder links)
+    renderFolders();
+}
+
+/**
+ * Sets the theme (light/dark), updates the <html> attribute, and stores the preference.
+ * @param {string} theme - 'light' | 'dark'.
+ * @returns {void}
+ */
+function setTheme(theme) {
+    currentState.theme = theme;
+    document.documentElement.setAttribute('data-bs-theme', theme);
+    // Save preference in localStorage
+    localStorage.setItem('appTheme', theme);
+}
+
+/**
+ * Initializes the theme by reading the saved preference (if present).
+ * @returns {void}
+ */
+function initializeTheme() {
+    const savedTheme = localStorage.getItem('appTheme');
+    if (savedTheme) {
+        document.documentElement.setAttribute('data-bs-theme', savedTheme);
+    }
+}
+
+/**
+ * Selects an email by ID, marks it as read, updates selection, and re-renders panels.
+ * @param {number} emailId - Unique email ID.
+ * @returns {void}
+ */
+function selectEmail(emailId) {
+    currentState.selectedEmailId = emailId;
+
+    // Update the "unread" state of the selected email
+    for (const folder in mockDatabase.emails[currentState.activeAccount]) {
+        const folderCache = mockDatabase.emails[currentState.activeAccount][folder];
+        // FIX APPLIED: Looks in the .items array
+        const email = folderCache.items.find(e => e.id === emailId); 
+        if (email) { 
+            email.unread = false; 
+            break; 
+        }
+    }
+
+    // Update the CSS class for the selected email
+    document.querySelectorAll('#email-list-container .list-group-item').forEach(item => {
+        item.classList.remove('selected', 'active');
+        if (parseInt(item.dataset.emailId) === emailId) {
+            item.classList.add('selected', 'active');
+            item.classList.remove('fw-bold');
+        }
+    });
+
+    // Mobile display logic
+    console.log("Selected email ID:", emailId);
+    if (window.innerWidth < 992) {
+        document.querySelector('.email-list-panel').style.display = 'none';
+        document.querySelector('.email-content-panel').style.display = 'block';
+    }
+
+    // Re-render updated components
+    renderFolders();
+    renderEmailContent();
+}
+
+/**
+ * Shows the email list (on mobile) and resets the current selection.
+ * @returns {void}
+ */
+function showEmailList() {
+    if (window.innerWidth < 992) {
+        document.querySelector('.email-list-panel').style.display = 'block';
+        document.querySelector('.email-content-panel').style.display = 'none';
+
+        currentState.selectedEmailId = null;
+
+        document.querySelectorAll('#email-list-container .list-group-item').forEach(item => {
+            item.classList.remove('selected', 'active');
+        });
+    }
+}
+
+/**
+ * Switches the active account: resets state, clears the previous cache, and loads the inbox for the new account.
+ * @param {string} accountId - ID of the new active account.
+ * @returns {Promise<void>}
+ */
+async function switchAccount(accountId) {
+    if (currentState.activeAccount === accountId) return;
+
+    const prevAccountId = currentState.activeAccount;
+
+    currentState.activeAccount = accountId;
+    currentState.activeFolder = 'inbox'; 
+    currentState.selectedEmailId = null;
+    
+    // MEMORY CLEAR: Clears the entire cache of the previous account to free up memory
+    if (prevAccountId && mockDatabase.emails[prevAccountId]) {
+        delete mockDatabase.emails[prevAccountId];
+        console.log(`Account data ${prevAccountId} cleared from memory.`);
+    }
+    
+    renderAccounts();
+    
+    // Loads the first page of the initial folder for the NEW account
+    await loadFolderData(accountId, currentState.activeFolder); 
+    
+    // Re-renders dynamic components with new data
+    renderFolders();
+    renderEmailList();
+    renderEmailContent();
+}
+
+/**
+ * Switches the active folder, loading the first page if not already cached.
+ * @param {string} folderKey - Target folder.
+ * @returns {Promise<void>}
+ */
+async function switchFolder(folderKey) {
+    if (currentState.activeFolder === folderKey) return;
+    
+    const accountId = currentState.activeAccount;
+
+    currentState.activeFolder = folderKey;
+    currentState.selectedEmailId = null;
+
+    // Checks if first page data for the new folder is cached
+    const folderCache = mockDatabase.emails[accountId] && mockDatabase.emails[accountId][folderKey];
+
+    if (!folderCache || folderCache.pagesLoaded === 0) {
+        // If not cached or not loaded, loads first page
+        await loadFolderData(accountId, folderKey); 
+    } else {
+        // Otherwise, ensures overlay is hidden if data is ready
+        document.getElementById('loading-overlay').style.display = 'none';
+    }
+    
+    // Updates the active element in the folder list
+    document.querySelectorAll('#folder-list .nav-link').forEach(link => {
+        link.classList.remove('active');
+        if (link.dataset.folderKey === folderKey) { link.classList.add('active'); }
+    });
+    
+    // Applies translations to update the folder title and renderFolders for badge count
+    applyTranslations(currentState.language);
+    renderFolders();
+
+    renderEmailList(); // Reloads the list from the cache (data loaded so far)
+    renderEmailContent();
+}
+
+// =================================================================================
+// 5. INITIALIZATION
+// =================================================================================
+
+/**
+ * Dynamically populates the language menu by reading the list from mockApi.
+ * @returns {Promise<void>}
+ */
+async function setupLanguageDropdown() {
+    console.log("Initializing the language menu...");
+
+    const languagePosition = document.querySelector('.dropdown-menu.dropdown-menu-end');
+    const template = document.getElementById('language-dropdown-item');
+
+    // If the element is not yet available, exit
+    if (!languagePosition || !template) {
+        console.error("Language menu elements not found in the DOM.");
+        return; 
+    }
+
+    // Prevent duplication if called again
+    languagePosition.querySelectorAll('a[data-language-code]').forEach(a => a.parentElement.remove());
+
+    try {
+        // Load the list from the updated mockApi
+        const languages = await mockFetch('/api/translations').then(res => res.json());
+        // Keep the language list in the global cache
+        mockDatabaseLanguages = languages;
+
+        languages.forEach(lang => {
+            // Clone the template content (<li> with <a>)
+            const itemClone = template.content.cloneNode(true);
+            const a = itemClone.querySelector('a');
+            const img = a.querySelector('[data-flag-img]');
+            const span = a.querySelector('[data-language-name]');
+
+            // Update attributes and texts
+            a.dataset.languageCode = lang.code;
+            img.src = lang.flag;
+            span.textContent = lang.name;
+            
+            // Append the <li>
+            languagePosition.appendChild(itemClone);
+        });
+
+        console.log("Language menu populated successfully.");
+
+        // Hide overlay if it was still visible just for the language menu
+        const ov = document.getElementById('loading-overlay');
+        if (ov && ov.style.display !== 'none' && mockDatabase.accounts.length > 0) {
+            // Let main handling occur in initializeApplication, don't force hidden here
+        }
+
+    } catch (error) {
+        console.error("Error loading languages:", error);
+    }
+}
+
+/**
+ * Initializes event delegation for the language menu (click on language entries).
+ * @returns {void}
+ */
+function initLanguageDelegation() {
+    const languageMenu = document.querySelector('.dropdown-menu.dropdown-menu-end');
+    if (!languageMenu) return;
+
+    // Query to select all language links (already in the DOM thanks to setupLanguageDropdown)
+    languageMenu.addEventListener('click', e => {
+        const languageLink = e.target.closest('a[data-language-code]');
+        if (!languageLink) return;
+
+        e.preventDefault();
+        // Get the language code from the link's dataset
+        const languageCode = languageLink.dataset.languageCode;
+        console.log(`Language change requested: ${languageCode}`);
+        changeLanguage(languageCode);
+    });
+}
+
+/**
+ * Immediately invoked function to ensure execution before DOMContentLoaded.
+ * @returns {Promise<void>}
+ */
+(async function() {
+    // Loading overlay is hidden and handled inside initializeApplication
+    await setupLanguageDropdown();
+})();
+
+/**
+ * Application bootstrap sequence:
+ * - Initializes theme
+ * - Loads languages, accounts, folders
+ * - Sets active account
+ * - Loads translations for the current language
+ * - Loads first page of inbox
+ * - Renders base components
+ *
+ * @returns {Promise<void>}
+ */
+async function initializeApplication() {
+    console.log("Initializing application...");
+    initializeTheme();
+
+    // 1. Fetch main data (Languages, Accounts, Folders) in parallel
+    const [languagesListResponse, accountsResponse, foldersResponse] = await Promise.all([
+        mockFetch('/api/translations').then(res => res.json()), // Language codes: ['it', 'en', ...]
+        mockFetch('/api/accounts').then(res => res.json()),
+        mockFetch('/api/folders').then(res => res.json()), // Folders for all accounts
+    ]);
+    
+    // 2. Populate global variables
+    mockDatabaseLanguages = languagesListResponse;
+    mockDatabaseAccounts = accountsResponse;
+    mockDatabaseFolders = foldersResponse;
+
+    // 3. Initialize the application state
+    mockDatabase.accounts = mockDatabaseAccounts;
+    currentState.activeAccount = mockDatabase.accounts[0]?.id || null; 
+    
+    if (!currentState.activeAccount) {
+        console.error("No account loaded. Unable to continue.");
+        return; 
+    }
+    
+    // 4. Fetch ONLY the active language
+    const activeLang = currentState.language;
+    try {
+        const translationResponse = await mockFetch(`/api/translations?l=${activeLang}`).then(res => res.json());
+        translations[activeLang] = translationResponse;
+    } catch (error) {
+        console.error(`Error loading active language (${activeLang}):`, error);
+        // If the translation fails, the app will still work with fallback texts
+    }
+
+    // 5. Start rendering static elements and initial logic
+    renderAccounts(); 
+    
+    // ** LIGHTWEIGHT LOADING **: Loads only the emails of the initial folder of the active account
+    await loadFolderData(currentState.activeAccount, currentState.activeFolder);
+
+    // 6. Start rendering and apply translations
+    applyTranslations(activeLang); 
+    renderFolders();
+    renderEmailList();
+    renderEmailContent(); 
+}
+
+/**
+ * Main DOMContentLoaded listener: registers theme, scroll, language delegation events and starts bootstrap.
+ * @returns {void}
+ */
+document.addEventListener('DOMContentLoaded', () => {
+    console.log('DOM fully loaded and parsed');
+
+    // LISTENERS FOR THEME BUTTONS
+    document.getElementById('theme-light').addEventListener('click', (e) => { e.preventDefault(); setTheme('light'); });
+    document.getElementById('theme-dark').addEventListener('click', (e) => { e.preventDefault(); setTheme('dark'); });
+
+    // LISTENER FOR SCROLL (Infinite Scroll)
+    console.log("Added listener for email list scroll...");
+    const emailListPanel = document.querySelector('.email-list-panel');
+    emailListPanel.addEventListener('scroll', () => {
+        // Checks if the user is near the bottom of the list
+        const { scrollTop, scrollHeight, clientHeight } = emailListPanel;
+        // The threshold is increased to 150px for a more "smooth" load
+        if (scrollTop + clientHeight >= scrollHeight - 50) { // 50px margin
+            loadMoreEmails();
+        }
+    });
+
+    initLanguageDelegation();
+    initializeApplication(); 
+
+    window.addEventListener('resize', () => {
+        if (window.innerWidth >= 992) {
+            document.querySelector('.email-list-panel').style.display = 'block';
+            document.querySelector('.email-content-panel').style.display = 'block';
+        } else {
+            renderMobileBackButton();
+
+            if(currentState.selectedEmailId) {
+                document.querySelector('.email-list-panel').style.display = 'none';
+                document.querySelector('.email-content-panel').style.display = 'block';
+            } else { 
+                showEmailList(); 
+            }
+        }
+
+        console.log('New layout at', window.innerWidth);
+    });
+
+    console.log('DOM ready, event listeners added');
+});
+</script>
+
+<!-- Loading overlay shown during initial load and global loading states -->
+<div id="loading-overlay" style="display: flex;">
+    <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+        <span class="visually-hidden"></span>
+    </div>
+</div>
+
+</body>
+</html>
+
